@@ -571,8 +571,8 @@ var TrNgGrid;
                         }
                         else if ($event.shiftKey) {
                             // clear undesired selections, if the styles are not applied
-                            if (document.selection && document.selection.empty) {
-                                document.selection.empty();
+                            if (document.getSelection() && document.getSelection().empty) {
+                                document.getSelection().empty();
                             }
                             else if (window.getSelection) {
                                 var sel = window.getSelection();

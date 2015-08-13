@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 var TrNgGrid;
 (function (TrNgGrid) {
     TrNgGrid.version = "3.1.4";
@@ -275,7 +275,7 @@ var TrNgGrid;
                 gridOptions.locale = "en";
             }
             if (gridOptions.selectionMode === undefined) {
-                gridOptions.selectionMode = SelectionMode[2 /* MultiRow */];
+                gridOptions.selectionMode = SelectionMode[SelectionMode.MultiRow];
             }
             if (gridOptions.filterByFields === undefined) {
                 gridOptions.filterByFields = {};
@@ -288,6 +288,9 @@ var TrNgGrid;
             }
             if (gridOptions.onDataRequiredDelay === undefined) {
                 gridOptions.onDataRequiredDelay = 1000; //ms
+            }
+            if (gridOptions.noDeselection === undefined) {
+                gridOptions.noDeselection = false;
             }
             if (gridOptions.selectedItems === undefined) {
                 gridOptions.selectedItems = [];
@@ -317,7 +320,13 @@ var TrNgGrid;
             };
             if (!this.isInServerSideMode) {
                 var initCycle = true;
-                gridScope.$watchCollection("[" + "gridOptions.filterBy," + "gridOptions.filterByFields," + "gridOptions.orderBy," + "gridOptions.orderByReverse," + "gridOptions.pageItems" + "]", function (newValue, oldValue) {
+                gridScope.$watchCollection("[" +
+                    "gridOptions.filterBy," +
+                    "gridOptions.filterByFields," +
+                    "gridOptions.orderBy," +
+                    "gridOptions.orderByReverse," +
+                    "gridOptions.pageItems" +
+                    "]", function (newValue, oldValue) {
                     if (initCycle) {
                         initCycle = false;
                     }
@@ -329,6 +338,11 @@ var TrNgGrid;
                 });
                 gridScope.$watch("gridOptions.currentPage", function (newValue, oldValue) {
                     if (newValue !== oldValue) {
+                        // turned off for the time being
+                        //if (this.temporarilyIgnorePageIndexChangeForDataFiltering) {
+                        //    this.temporarilyIgnorePageIndexChangeForDataFiltering = false;
+                        //}
+                        //else
                         {
                             _this.scheduleDataFiltering();
                         }
@@ -446,6 +460,11 @@ var TrNgGrid;
                 // the current page must be monitored separately, as it's being adjusted by logic fired by various watchers
                 gridScope.$watch("gridOptions.currentPage", function (newValue, oldValue) {
                     if (newValue !== oldValue) {
+                        // Update: turned off for the time being
+                        //if (this.temporarilyIgnorePageIndexChangeForDataRetrievals) {
+                        //    this.temporarilyIgnorePageIndexChangeForDataRetrievals = false;
+                        //}
+                        //else 
                         {
                             TrNgGrid.debugMode && _this.log("Changes detected in the current page index in server-side mode. Scheduling data retrieval...");
                             _this.scheduleServerSideModeDataRetrieval();
@@ -453,7 +472,13 @@ var TrNgGrid;
                     }
                 });
                 var initCycle = true;
-                gridScope.$watchCollection("[" + "gridOptions.filterBy, " + "gridOptions.filterByFields, " + "gridOptions.orderBy, " + "gridOptions.orderByReverse, " + "gridOptions.pageItems" + "]", function (newValues, oldValues) {
+                gridScope.$watchCollection("[" +
+                    "gridOptions.filterBy, " +
+                    "gridOptions.filterByFields, " +
+                    "gridOptions.orderBy, " +
+                    "gridOptions.orderByReverse, " +
+                    "gridOptions.pageItems" +
+                    "]", function (newValues, oldValues) {
                     if (initCycle) {
                         initCycle = false;
                     }
@@ -476,8 +501,7 @@ var TrNgGrid;
             }
             else {
                 // non server side mode => nothing to do
-                this.speedUpServerSideModeDataRetrieval = function ($event) {
-                };
+                this.speedUpServerSideModeDataRetrieval = function ($event) { };
             }
             gridScope.speedUpAsyncDataRetrieval = function ($event) { return _this.speedUpServerSideModeDataRetrieval($event); };
         };
@@ -486,11 +510,12 @@ var TrNgGrid;
             // the new settings
             gridScope.$watch("gridOptions.selectionMode", function (newValue, oldValue) {
                 if (newValue !== oldValue) {
+                    // when this value is changing we need to handle the selectedItems
                     switch (newValue) {
-                        case SelectionMode[0 /* None */]:
+                        case SelectionMode[SelectionMode.None]:
                             _this.gridOptions.selectedItems.splice(0);
                             break;
-                        case SelectionMode[1 /* SingleRow */]:
+                        case SelectionMode[SelectionMode.SingleRow]:
                             if (_this.gridOptions.selectedItems.length > 1) {
                                 _this.gridOptions.selectedItems.splice(1);
                             }
@@ -521,15 +546,15 @@ var TrNgGrid;
             this.speedUpServerSideModeDataRetrieval();
         };
         GridController.prototype.toggleItemSelection = function (filteredItems, item, $event) {
-            if (this.gridOptions.selectionMode === SelectionMode[0 /* None */])
+            if (this.gridOptions.selectionMode === SelectionMode[SelectionMode.None])
                 return;
             switch (this.gridOptions.selectionMode) {
-                case SelectionMode[3 /* MultiRowWithKeyModifiers */]:
+                case SelectionMode[SelectionMode.MultiRowWithKeyModifiers]:
                     if (!$event.ctrlKey && !$event.shiftKey && !$event.metaKey) {
                         // if neither key modifiers are pressed, clear the selection and start fresh
                         var itemIndex = this.gridOptions.selectedItems.indexOf(item);
                         this.gridOptions.selectedItems.splice(0);
-                        if (itemIndex < 0) {
+                        if (this.gridOptions.noDeselection || itemIndex < 0) {
                             this.gridOptions.selectedItems.push(item);
                         }
                     }
@@ -546,8 +571,8 @@ var TrNgGrid;
                         }
                         else if ($event.shiftKey) {
                             // clear undesired selections, if the styles are not applied
-                            if (document.selection && document.selection.empty) {
-                                document.selection.empty();
+                            if (document.getSelection() && document.getSelection().empty) {
+                                document.getSelection().empty();
                             }
                             else if (window.getSelection) {
                                 var sel = window.getSelection();
@@ -565,6 +590,7 @@ var TrNgGrid;
                             for (lastItemIndex = 0; lastItemIndex < filteredItems.length && filteredItems[lastItemIndex].$$_gridItem !== item; lastItemIndex++)
                                 ;
                             if (lastItemIndex >= filteredItems.length) {
+                                // this is an error
                                 throw "Invalid selection on a key modifier selection mode";
                             }
                             if (lastItemIndex < firstItemIndex) {
@@ -572,6 +598,7 @@ var TrNgGrid;
                                 firstItemIndex = lastItemIndex;
                                 lastItemIndex = tempIndex;
                             }
+                            // now select everything in between. remember that a shift modifier can never be used for de-selecting items
                             for (var currentItemIndex = firstItemIndex; currentItemIndex <= lastItemIndex; currentItemIndex++) {
                                 var currentItem = filteredItems[currentItemIndex].$$_gridItem;
                                 if (this.gridOptions.selectedItems.indexOf(currentItem) < 0) {
@@ -581,14 +608,14 @@ var TrNgGrid;
                         }
                     }
                     break;
-                case SelectionMode[1 /* SingleRow */]:
+                case SelectionMode[SelectionMode.SingleRow]:
                     var itemIndex = this.gridOptions.selectedItems.indexOf(item);
                     this.gridOptions.selectedItems.splice(0);
-                    if (itemIndex < 0) {
+                    if (this.gridOptions.noDeselection || itemIndex < 0) {
                         this.gridOptions.selectedItems.push(item);
                     }
                     break;
-                case SelectionMode[2 /* MultiRow */]:
+                case SelectionMode[SelectionMode.MultiRow]:
                     var itemIndex = this.gridOptions.selectedItems.indexOf(item);
                     if (itemIndex >= 0) {
                         this.gridOptions.selectedItems.splice(itemIndex, 1);
@@ -677,7 +704,11 @@ var TrNgGrid;
                             });
                             return;
                         }
+                        // extract the field names
                         for (var propName in this.gridOptions.items[0]) {
+                            // exclude the library properties
+                            // UPDATE: decided to remove this restriction
+                            //if (!propName.match(/^[\$]/g)) 
                             {
                                 finalPartialGridColumnDefs.push({
                                     isStandardColumn: true,
@@ -746,6 +777,7 @@ var TrNgGrid;
                     var outputItem;
                     // crate a temporary scope for holding a gridItem as we enumerate through the items
                     var localEvalVars = { gridItem: gridItem };
+                    // check for removed items, try to keep the item instances intact
                     while (formattedItems.length > input.length && (outputItem = formattedItems[inputIndex]).$$_gridItem !== gridItem) {
                         formattedItems.splice(inputIndex, 1);
                     }
@@ -866,7 +898,8 @@ var TrNgGrid;
         };
         return GridController;
     })();
-    angular.module("trNgGrid", []).directive(tableDirective, [
+    angular.module("trNgGrid", [])
+        .directive(tableDirective, [
         function () {
             return {
                 restrict: 'A',
@@ -886,6 +919,7 @@ var TrNgGrid;
                     enableSorting: '=?',
                     selectionMode: '@',
                     locale: '@',
+                    noDeselection: '=?',
                     onDataRequired: '&',
                     onDataRequiredDelay: '=?',
                     fields: '=?'
@@ -915,8 +949,8 @@ var TrNgGrid;
                     };
                 }
             };
-        }
-    ]).directive(cellHeaderDirective, [
+        }])
+        .directive(cellHeaderDirective, [
         function () {
             var setupColumnTitle = function (scope) {
                 if (scope.columnOptions.displayName) {
@@ -992,16 +1026,18 @@ var TrNgGrid;
                 }
             };
         }
-    ]).directive(cellHeaderTemplateDirective, [
+    ])
+        .directive(cellHeaderTemplateDirective, [
         function () {
             return {
                 restrict: 'A',
                 templateUrl: TrNgGrid.cellHeaderTemplateId,
                 transclude: true,
-                replace: true,
+                replace: true
             };
         }
-    ]).directive(bodyDirective, [
+    ])
+        .directive(bodyDirective, [
         function () {
             return {
                 restrict: 'A',
@@ -1018,7 +1054,8 @@ var TrNgGrid;
                 }
             };
         }
-    ]).directive(cellBodyDirective, [
+    ])
+        .directive(cellBodyDirective, [
         function () {
             return {
                 restrict: 'A',
@@ -1037,7 +1074,8 @@ var TrNgGrid;
                 }
             };
         }
-    ]).directive(cellBodyTemplateDirective, [
+    ])
+        .directive(cellBodyTemplateDirective, [
         function () {
             return {
                 restrict: 'A',
@@ -1046,7 +1084,8 @@ var TrNgGrid;
                 replace: true
             };
         }
-    ]).directive(cellFooterDirective, [
+    ])
+        .directive(cellFooterDirective, [
         function () {
             return {
                 restrict: 'A',
@@ -1064,7 +1103,8 @@ var TrNgGrid;
                 }
             };
         }
-    ]).directive(cellFooterTemplateDirective, [
+    ])
+        .directive(cellFooterTemplateDirective, [
         function () {
             return {
                 restrict: 'A',
@@ -1073,7 +1113,8 @@ var TrNgGrid;
                 replace: true
             };
         }
-    ]).directive(columnSortDirective, [
+    ])
+        .directive(columnSortDirective, [
         function () {
             return {
                 restrict: 'A',
@@ -1081,7 +1122,8 @@ var TrNgGrid;
                 templateUrl: TrNgGrid.columnSortTemplateId
             };
         }
-    ]).directive(columnFilterDirective, [
+    ])
+        .directive(columnFilterDirective, [
         function () {
             return {
                 restrict: 'A',
@@ -1089,22 +1131,28 @@ var TrNgGrid;
                 templateUrl: TrNgGrid.columnFilterTemplateId
             };
         }
-    ]).directive(globalFilterDirective, [
+    ])
+        .directive(globalFilterDirective, [
         function () {
             return {
                 restrict: 'A',
                 scope: false,
-                templateUrl: TrNgGrid.footerGlobalFilterTemplateId,
+                templateUrl: TrNgGrid.footerGlobalFilterTemplateId
             };
         }
-    ]).directive(pagerDirective, [
+    ])
+        .directive(pagerDirective, [
         function () {
             var setupScope = function (scope, controller) {
                 // do not set scope.gridOptions.totalItems, it might be set from the outside
-                scope.totalItemsCount = (typeof (scope.gridOptions.totalItems) != "undefined" && scope.gridOptions.totalItems != null) ? scope.gridOptions.totalItems : (scope.gridOptions.items ? scope.gridOptions.items.length : 0);
+                scope.totalItemsCount = (typeof (scope.gridOptions.totalItems) != "undefined" && scope.gridOptions.totalItems != null)
+                    ? scope.gridOptions.totalItems
+                    : (scope.gridOptions.items ? scope.gridOptions.items.length : 0);
                 scope.isPaged = (!!scope.gridOptions.pageItems) && (scope.gridOptions.pageItems < scope.totalItemsCount);
                 scope.extendedControlsActive = false;
-                scope.lastPageIndex = (!scope.totalItemsCount || !scope.isPaged) ? 0 : (Math.floor(scope.totalItemsCount / scope.gridOptions.pageItems) + ((scope.totalItemsCount % scope.gridOptions.pageItems) ? 0 : -1));
+                scope.lastPageIndex = (!scope.totalItemsCount || !scope.isPaged)
+                    ? 0
+                    : (Math.floor(scope.totalItemsCount / scope.gridOptions.pageItems) + ((scope.totalItemsCount % scope.gridOptions.pageItems) ? 0 : -1));
                 if (scope.gridOptions.currentPage > scope.lastPageIndex) {
                     TrNgGrid.debugMode && controller.log("The current page index falls outside of the range of items. Either the attached parameter has a wrong value or the total items count is not properly set in server side mode.");
                     scope.gridOptions.currentPage = scope.lastPageIndex;
@@ -1155,6 +1203,7 @@ var TrNgGrid;
                     }
                     else {
                         scope.extendedControlsActive = false;
+                        // we can display all of them
                         for (var pageIndex = 0; pageIndex <= scope.lastPageIndex; pageIndex++) {
                             scope.pageIndexes.push(pageIndex);
                         }
@@ -1175,7 +1224,7 @@ var TrNgGrid;
                     }
                 };
             };
-            //ng - model = "gridOptions.currentPage" 
+            //ng - model = "gridOptions.currentPage"
             return {
                 restrict: 'A',
                 scope: true,
@@ -1196,43 +1245,45 @@ var TrNgGrid;
                 }
             };
         }
-    ]).filter(TrNgGrid.sortFilter, ["$filter", "$parse", function ($filter, $parse) {
-        return function (input, gridOptions) {
-            if (!gridOptions.orderBy || !gridOptions.gridColumnDefs) {
-                // not ready to sort, return the input array
-                return input;
-            }
-            // we'll need the column options
-            var columnOptions = null;
-            for (var columnOptionsIndex = 0; (columnOptionsIndex < gridOptions.gridColumnDefs.length) && ((columnOptions = gridOptions.gridColumnDefs[columnOptionsIndex]).fieldName !== gridOptions.orderBy); columnOptions = null, columnOptionsIndex++)
-                ;
-            if (!columnOptions) {
-                // unable to find any info about the selected field
-                return input;
-            }
-            var sortedInput = $filter("orderBy")(input, function (item) {
-                var fieldValue = undefined;
-                if (columnOptions.fieldExtractionExpression) {
-                    try {
-                        // get the value associated with the original grid item
-                        fieldValue = $parse("item.$$_gridItem" + columnOptions.fieldExtractionExpression)({ item: item });
-                    }
-                    catch (ex) {
-                    }
+    ])
+        .filter(TrNgGrid.sortFilter, ["$filter", "$parse", function ($filter, $parse) {
+            return function (input, gridOptions) {
+                if (!gridOptions.orderBy || !gridOptions.gridColumnDefs) {
+                    // not ready to sort, return the input array
+                    return input;
                 }
-                if (fieldValue === undefined) {
-                    try {
-                        // next try the field on the display item, in case of computed fields
-                        fieldValue = $parse("item[\"" + columnOptions.displayFieldName + "\"]")({ item: item });
-                    }
-                    catch (ex) {
-                    }
+                // we'll need the column options
+                var columnOptions = null;
+                for (var columnOptionsIndex = 0; (columnOptionsIndex < gridOptions.gridColumnDefs.length) && ((columnOptions = gridOptions.gridColumnDefs[columnOptionsIndex]).fieldName !== gridOptions.orderBy); columnOptions = null, columnOptionsIndex++)
+                    ;
+                if (!columnOptions) {
+                    // unable to find any info about the selected field
+                    return input;
                 }
-                return fieldValue;
-            }, gridOptions.orderByReverse);
-            return sortedInput;
-        };
-    }]).filter(TrNgGrid.dataPagingFilter, function () {
+                var sortedInput = $filter("orderBy")(input, function (item) {
+                    var fieldValue = undefined;
+                    if (columnOptions.fieldExtractionExpression) {
+                        try {
+                            // get the value associated with the original grid item
+                            fieldValue = $parse("item.$$_gridItem" + columnOptions.fieldExtractionExpression)({ item: item });
+                        }
+                        catch (ex) {
+                        }
+                    }
+                    if (fieldValue === undefined) {
+                        try {
+                            // next try the field on the display item, in case of computed fields
+                            fieldValue = $parse("item[\"" + columnOptions.displayFieldName + "\"]")({ item: item });
+                        }
+                        catch (ex) {
+                        }
+                    }
+                    return fieldValue;
+                }, gridOptions.orderByReverse);
+                return sortedInput;
+            };
+        }])
+        .filter(TrNgGrid.dataPagingFilter, function () {
         // when server-side logic is enabled, this directive should not be used!
         return function (input, gridOptions) {
             //currentPage?:number, pageItems?:number
@@ -1251,45 +1302,47 @@ var TrNgGrid;
             var endIndex = gridOptions.currentPage * gridOptions.pageItems + gridOptions.pageItems;
             return input.slice(startIndex, endIndex);
         };
-    }).filter(TrNgGrid.translateFilter, ["$filter", "$injector", function ($filter, $injector) {
-        return function (input, languageId) {
-            var translatedText = null;
-            if (!languageId) {
-                throw "Language identifier is not set";
-            }
-            // dates require special attention
-            if (input instanceof Date) {
-                // we're dealing with a date object, see if we have a localized format for it
-                var dateFormat = $filter(TrNgGrid.translateFilter)(TrNgGrid.translationDateFormat, languageId);
-                if (dateFormat && dateFormat !== TrNgGrid.translationDateFormat) {
-                    // call the date filter
-                    translatedText = $filter("date")(input, dateFormat);
-                    return translatedText;
+    })
+        .filter(TrNgGrid.translateFilter, ["$filter", "$injector", function ($filter, $injector) {
+            return function (input, languageId) {
+                var translatedText = null;
+                if (!languageId) {
+                    throw "Language identifier is not set";
                 }
-                return input;
-            }
-            var languageIdParts = languageId.split(/[-_]/);
-            for (var languageIdPartIndex = languageIdParts.length; (languageIdPartIndex > 0) && (!translatedText); languageIdPartIndex--) {
-                var subLanguageId = languageIdParts.slice(0, languageIdPartIndex).join("-");
-                var langTranslations = TrNgGrid.translations[subLanguageId];
-                if (langTranslations) {
-                    translatedText = langTranslations[input];
+                // dates require special attention
+                if (input instanceof Date) {
+                    // we're dealing with a date object, see if we have a localized format for it
+                    var dateFormat = $filter(TrNgGrid.translateFilter)(TrNgGrid.translationDateFormat, languageId);
+                    if (dateFormat && dateFormat !== TrNgGrid.translationDateFormat) {
+                        // call the date filter
+                        translatedText = $filter("date")(input, dateFormat);
+                        return translatedText;
+                    }
+                    return input;
                 }
-            }
-            // check for a filter directive
-            if (!translatedText && $injector.has("translateFilter")) {
-                try {
-                    translatedText = $filter("translate")(input);
+                var languageIdParts = languageId.split(/[-_]/);
+                for (var languageIdPartIndex = languageIdParts.length; (languageIdPartIndex > 0) && (!translatedText); languageIdPartIndex--) {
+                    var subLanguageId = languageIdParts.slice(0, languageIdPartIndex).join("-");
+                    var langTranslations = TrNgGrid.translations[subLanguageId];
+                    if (langTranslations) {
+                        translatedText = langTranslations[input];
+                    }
                 }
-                catch (ex) {
+                // check for a filter directive
+                if (!translatedText && $injector.has("translateFilter")) {
+                    try {
+                        translatedText = $filter("translate")(input);
+                    }
+                    catch (ex) {
+                    }
                 }
-            }
-            if (!translatedText) {
-                translatedText = input;
-            }
-            return translatedText;
-        };
-    }]).run(function () {
+                if (!translatedText) {
+                    translatedText = input;
+                }
+                return translatedText;
+            };
+        }])
+        .run(function () {
         TrNgGrid.tableCssClass = "tr-ng-grid table table-bordered table-hover"; // at the time of coding, table-striped is not working properly with selection
         TrNgGrid.cellCssClass = "tr-ng-cell";
         TrNgGrid.headerCellCssClass = "tr-ng-column-header " + TrNgGrid.cellCssClass;
@@ -1304,33 +1357,107 @@ var TrNgGrid;
         TrNgGrid.columnSortNormalOrderCssClass = "tr-ng-sort-order-normal glyphicon glyphicon-chevron-up";
         TrNgGrid.rowSelectedCssClass = "active";
         TrNgGrid.footerCssClass = "tr-ng-grid-footer form-inline";
-    }).run(function () {
+    })
+        .run(function () {
         TrNgGrid.defaultColumnOptions.displayAlign = 'left';
         TrNgGrid.defaultPagerMinifiedPageCountThreshold = 3;
     });
     function configureTemplates($templateCache) {
         // set up default templates
         if (!$templateCache.get(TrNgGrid.cellHeaderTemplateId)) {
-            $templateCache.put(TrNgGrid.cellHeaderTemplateId, '<div class="' + TrNgGrid.headerCellCssClass + '" ng-switch="isCustomized">' + '  <div ng-switch-when="true">' + '    <div ng-transclude=""></div>' + '  </div>' + '  <div ng-switch-default>' + '    <div class="' + TrNgGrid.columnTitleCssClass + '">' + '      {{columnTitle |' + TrNgGrid.translateFilter + ':gridOptions.locale}}' + '       <div ' + TrNgGrid.columnSortDirectiveAttribute + '=""></div>' + '    </div>' + '    <div ' + TrNgGrid.columnFilterDirectiveAttribute + '=""></div>' + '  </div>' + '</div>');
+            $templateCache.put(TrNgGrid.cellHeaderTemplateId, '<div class="' + TrNgGrid.headerCellCssClass + '" ng-switch="isCustomized">'
+                + '  <div ng-switch-when="true">'
+                + '    <div ng-transclude=""></div>'
+                + '  </div>'
+                + '  <div ng-switch-default>'
+                + '    <div class="' + TrNgGrid.columnTitleCssClass + '">'
+                + '      {{columnTitle |' + TrNgGrid.translateFilter + ':gridOptions.locale}}'
+                + '       <div ' + TrNgGrid.columnSortDirectiveAttribute + '=""></div>'
+                + '    </div>'
+                + '    <div ' + TrNgGrid.columnFilterDirectiveAttribute + '=""></div>'
+                + '  </div>'
+                + '</div>');
         }
         if (!$templateCache.get(TrNgGrid.cellBodyTemplateId)) {
-            $templateCache.put(TrNgGrid.cellBodyTemplateId, '<div ng-attr-class="' + TrNgGrid.bodyCellCssClass + ' text-{{columnOptions.displayAlign}}" ng-switch="isCustomized">' + '  <div ng-switch-when="true">' + '    <div ng-transclude=""></div>' + '  </div>' + '  <div ng-switch-default>{{gridDisplayItem[columnOptions.displayFieldName]}}</div>' + '</div>');
+            $templateCache.put(TrNgGrid.cellBodyTemplateId, '<div ng-attr-class="' + TrNgGrid.bodyCellCssClass + ' text-{{columnOptions.displayAlign}}" ng-switch="isCustomized">'
+                + '  <div ng-switch-when="true">'
+                + '    <div ng-transclude=""></div>'
+                + '  </div>'
+                + '  <div ng-switch-default>{{gridDisplayItem[columnOptions.displayFieldName]}}</div>'
+                + '</div>');
         }
         if (!$templateCache.get(TrNgGrid.columnFilterTemplateId)) {
-            $templateCache.put(TrNgGrid.columnFilterTemplateId, '<div ng-show="(gridOptions.enableFiltering&&columnOptions.enableFiltering!==false)||columnOptions.enableFiltering" class="' + TrNgGrid.columnFilterCssClass + '">' + ' <div class="' + TrNgGrid.columnFilterInputWrapperCssClass + '">' + '   <input class="form-control input-sm" type="text" ng-model="columnOptions.filter" ng-keypress="speedUpAsyncDataRetrieval($event)"></input>' + ' </div>' + '</div>');
+            $templateCache.put(TrNgGrid.columnFilterTemplateId, '<div ng-show="(gridOptions.enableFiltering&&columnOptions.enableFiltering!==false)||columnOptions.enableFiltering" class="' + TrNgGrid.columnFilterCssClass + '">'
+                + ' <div class="' + TrNgGrid.columnFilterInputWrapperCssClass + '">'
+                + '   <input class="form-control input-sm" type="text" ng-model="columnOptions.filter" ng-keypress="speedUpAsyncDataRetrieval($event)"></input>'
+                + ' </div>'
+                + '</div>');
         }
         if (!$templateCache.get(TrNgGrid.columnSortTemplateId)) {
-            $templateCache.put(TrNgGrid.columnSortTemplateId, '<div ng-attr-title="{{\'Sort\'|' + TrNgGrid.translateFilter + ':gridOptions.locale}}"' + ' ng-show="(gridOptions.enableSorting&&columnOptions.enableSorting!==false)||columnOptions.enableSorting"' + ' ng-click="toggleSorting(columnOptions.fieldName)"' + ' class="' + TrNgGrid.columnSortCssClass + '" > ' + '  <div ng-class="{\'' + TrNgGrid.columnSortActiveCssClass + '\':gridOptions.orderBy==columnOptions.fieldName,\'' + TrNgGrid.columnSortInactiveCssClass + '\':gridOptions.orderBy!=columnOptions.fieldName,\'' + TrNgGrid.columnSortNormalOrderCssClass + '\':gridOptions.orderBy==columnOptions.fieldName&&!gridOptions.orderByReverse,\'' + TrNgGrid.columnSortReverseOrderCssClass + '\':gridOptions.orderBy==columnOptions.fieldName&&gridOptions.orderByReverse}" >' + '  </div>' + '</div>');
+            $templateCache.put(TrNgGrid.columnSortTemplateId, '<div ng-attr-title="{{\'Sort\'|' + TrNgGrid.translateFilter + ':gridOptions.locale}}"'
+                + ' ng-show="(gridOptions.enableSorting&&columnOptions.enableSorting!==false)||columnOptions.enableSorting"'
+                + ' ng-click="toggleSorting(columnOptions.fieldName)"'
+                + ' class="' + TrNgGrid.columnSortCssClass + '" > '
+                + '  <div ng-class="{\''
+                + TrNgGrid.columnSortActiveCssClass + '\':gridOptions.orderBy==columnOptions.fieldName,\''
+                + TrNgGrid.columnSortInactiveCssClass + '\':gridOptions.orderBy!=columnOptions.fieldName,\''
+                + TrNgGrid.columnSortNormalOrderCssClass + '\':gridOptions.orderBy==columnOptions.fieldName&&!gridOptions.orderByReverse,\''
+                + TrNgGrid.columnSortReverseOrderCssClass + '\':gridOptions.orderBy==columnOptions.fieldName&&gridOptions.orderByReverse}" >'
+                + '  </div>'
+                + '</div>');
         }
         if (!$templateCache.get(TrNgGrid.cellFooterTemplateId)) {
-            $templateCache.put(TrNgGrid.cellFooterTemplateId, '<div class="' + TrNgGrid.footerCssClass + '" ng-switch="isCustomized">' + '  <div ng-switch-when="true">' + '    <div ng-transclude=""></div>' + '  </div>' + '  <div ng-switch-default>' + '    <span ' + TrNgGrid.globalFilterDirectiveAttribute + '=""></span>' + '    <span ' + TrNgGrid.pagerDirectiveAttribute + '=""></span>' + '  </div>' + '</div>');
+            $templateCache.put(TrNgGrid.cellFooterTemplateId, '<div class="' + TrNgGrid.footerCssClass + '" ng-switch="isCustomized">'
+                + '  <div ng-switch-when="true">'
+                + '    <div ng-transclude=""></div>'
+                + '  </div>'
+                + '  <div ng-switch-default>'
+                + '    <span ' + TrNgGrid.globalFilterDirectiveAttribute + '=""></span>'
+                + '    <span ' + TrNgGrid.pagerDirectiveAttribute + '=""></span>'
+                + '  </div>'
+                + '</div>');
         }
         if (!$templateCache.get(TrNgGrid.footerGlobalFilterTemplateId)) {
-            $templateCache.put(TrNgGrid.footerGlobalFilterTemplateId, '<span ng-show="gridOptions.enableFiltering" class="pull-left form-group">' + '  <input class="form-control" type="text" ng-model="gridOptions.filterBy" ng-keypress="speedUpAsyncDataRetrieval($event)" ng-attr-placeholder="{{\'Search\'|' + TrNgGrid.translateFilter + ':gridOptions.locale}}"></input>' + '</span>');
+            $templateCache.put(TrNgGrid.footerGlobalFilterTemplateId, '<span ng-show="gridOptions.enableFiltering" class="pull-left form-group">'
+                + '  <input class="form-control" type="text" ng-model="gridOptions.filterBy" ng-keypress="speedUpAsyncDataRetrieval($event)" ng-attr-placeholder="{{\'Search\'|' + TrNgGrid.translateFilter + ':gridOptions.locale}}"></input>'
+                + '</span>');
         }
         if (!$templateCache.get(TrNgGrid.footerPagerTemplateId)) {
-            $templateCache.put(TrNgGrid.footerPagerTemplateId, '<span class="pull-right form-group">' + ' <ul class="pagination">' + '   <li ng-class="{disabled:!pageCanGoBack}" ng-if="extendedControlsActive">' + '     <a href="" ng-click="pageCanGoBack&&navigateToPage(0)" ng-attr-title="{{\'First Page\'|' + TrNgGrid.translateFilter + ':gridOptions.locale}}">' + '         <span>&laquo;</span>' + '     </a>' + '   </li>' + '   <li ng-class="{disabled:!pageCanGoBack}" ng-if="extendedControlsActive">' + '     <a href="" ng-click="pageCanGoBack&&navigateToPage(gridOptions.currentPage - 1)" ng-attr-title="{{\'Previous Page\'|' + TrNgGrid.translateFilter + ':gridOptions.locale}}">' + '         <span>&lsaquo;</span>' + '     </a>' + '   </li>' + '   <li ng-if="pageSelectionActive" ng-repeat="pageIndex in pageIndexes track by $index" ng-class="{disabled:pageIndex===null, active:pageIndex===gridOptions.currentPage}">' + '      <span ng-if="pageIndex===null">...</span>' + '      <a href="" ng-click="navigateToPage(pageIndex)" ng-if="pageIndex!==null" ng-attr-title="{{\'Page\'|' + TrNgGrid.translateFilter + ':gridOptions.locale}}">{{pageIndex+1}}</a>' + '   </li>' + '   <li ng-class="{disabled:!pageCanGoForward}" ng-if="extendedControlsActive">' + '     <a href="" ng-click="pageCanGoForward&&navigateToPage(gridOptions.currentPage + 1)" ng-attr-title="{{\'Next Page\'|' + TrNgGrid.translateFilter + ':gridOptions.locale}}">' + '         <span>&rsaquo;</span>' + '     </a>' + '   </li>' + '   <li ng-class="{disabled:!pageCanGoForward}" ng-if="extendedControlsActive">' + '     <a href="" ng-click="pageCanGoForward&&navigateToPage(lastPageIndex)" ng-attr-title="{{\'Last Page\'|' + TrNgGrid.translateFilter + ':gridOptions.locale}}">' + '         <span>&raquo;</span>' + '     </a>' + '   </li>' + '   <li class="disabled" style="white-space: nowrap;">' + '     <span ng-hide="totalItemsCount">{{\'No items to display\'|' + TrNgGrid.translateFilter + ':gridOptions.locale}}</span>' + '     <span ng-show="totalItemsCount">' + '       {{startItemIndex+1}} - {{endItemIndex+1}} {{\'displayed\'|' + TrNgGrid.translateFilter + ':gridOptions.locale}}' + '       <span>, {{totalItemsCount}} {{\'in total\'|' + TrNgGrid.translateFilter + ':gridOptions.locale}}</span>' + '     </span > ' + '   </li>' + ' </ul>' + '</span>');
+            $templateCache.put(TrNgGrid.footerPagerTemplateId, '<span class="pull-right form-group">'
+                + ' <ul class="pagination">'
+                + '   <li ng-class="{disabled:!pageCanGoBack}" ng-if="extendedControlsActive">'
+                + '     <a href="" ng-click="pageCanGoBack&&navigateToPage(0)" ng-attr-title="{{\'First Page\'|' + TrNgGrid.translateFilter + ':gridOptions.locale}}">'
+                + '         <span>&laquo;</span>'
+                + '     </a>'
+                + '   </li>'
+                + '   <li ng-class="{disabled:!pageCanGoBack}" ng-if="extendedControlsActive">'
+                + '     <a href="" ng-click="pageCanGoBack&&navigateToPage(gridOptions.currentPage - 1)" ng-attr-title="{{\'Previous Page\'|' + TrNgGrid.translateFilter + ':gridOptions.locale}}">'
+                + '         <span>&lsaquo;</span>'
+                + '     </a>'
+                + '   </li>'
+                + '   <li ng-if="pageSelectionActive" ng-repeat="pageIndex in pageIndexes track by $index" ng-class="{disabled:pageIndex===null, active:pageIndex===gridOptions.currentPage}">'
+                + '      <span ng-if="pageIndex===null">...</span>'
+                + '      <a href="" ng-click="navigateToPage(pageIndex)" ng-if="pageIndex!==null" ng-attr-title="{{\'Page\'|' + TrNgGrid.translateFilter + ':gridOptions.locale}}">{{pageIndex+1}}</a>'
+                + '   </li>'
+                + '   <li ng-class="{disabled:!pageCanGoForward}" ng-if="extendedControlsActive">'
+                + '     <a href="" ng-click="pageCanGoForward&&navigateToPage(gridOptions.currentPage + 1)" ng-attr-title="{{\'Next Page\'|' + TrNgGrid.translateFilter + ':gridOptions.locale}}">'
+                + '         <span>&rsaquo;</span>'
+                + '     </a>'
+                + '   </li>'
+                + '   <li ng-class="{disabled:!pageCanGoForward}" ng-if="extendedControlsActive">'
+                + '     <a href="" ng-click="pageCanGoForward&&navigateToPage(lastPageIndex)" ng-attr-title="{{\'Last Page\'|' + TrNgGrid.translateFilter + ':gridOptions.locale}}">'
+                + '         <span>&raquo;</span>'
+                + '     </a>'
+                + '   </li>'
+                + '   <li class="disabled" style="white-space: nowrap;">'
+                + '     <span ng-hide="totalItemsCount">{{\'No items to display\'|' + TrNgGrid.translateFilter + ':gridOptions.locale}}</span>'
+                + '     <span ng-show="totalItemsCount">'
+                + '       {{startItemIndex+1}} - {{endItemIndex+1}} {{\'displayed\'|' + TrNgGrid.translateFilter + ':gridOptions.locale}}'
+                + '       <span>, {{totalItemsCount}} {{\'in total\'|' + TrNgGrid.translateFilter + ':gridOptions.locale}}</span>'
+                + '     </span > '
+                + '   </li>'
+                + ' </ul>'
+                + '</span>');
         }
     }
 })(TrNgGrid || (TrNgGrid = {}));
-
